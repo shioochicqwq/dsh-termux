@@ -65,7 +65,8 @@ dsh plugin --profile web list
 | 启动 | `dsh` 以 `node --expose-internals` 启动；0.2.x 的 profile 解析要用 Node 内部模块，原本依赖的原生模块没有 Android 版本 |
 | shell | 依次查找 `DSH_BASH_SHELL`、Termux 的 `bash`、`/bin/bash`（Android 没有 `/bin/bash`） |
 | 搜索 | `grep` / `glob` 使用 `DSH_RG_PATH` 或 Termux 的 `rg`（ripgrep 依赖包没有 android-arm64 版本） |
-| 会话落盘 | Android 不允许应用创建硬链接，会话文件改用重命名发布 |
+| 会话落盘 | 仍用硬链接独占发布；Android 拒绝硬链接时改为独占复制（同样不会覆盖已有文件） |
+| 会话写锁 | 系统自带的 `flock` 原生模块没有 Android 版本，改为通过 `koffi` 直接调用 libc 的 `flock` |
 | 原生模块 | `koffi` 按 Android 规则编译；`node-pty` 使用 Android 预编译版本；`sharp` 使用 WebAssembly 版本 |
 
 逐项改动见 [PATCHES.md](PATCHES.md)。
@@ -73,7 +74,7 @@ dsh plugin --profile web list
 ## 已知限制
 
 - **没有容器沙箱**：Android 上无法运行 `bubblewrap` / Landlock，执行命令需要使用「手动审批」策略或完全访问模式。
-- **同一会话不要同时用多个 dsh 进程打开**（例如 `dsh web` 和 `dsh --profile headless` 同时操作同一会话）：会话文件改用重命名发布后，并发写入时后写的会覆盖先写的。
+- **`0.2.1-rc.2-termux.1` 安装包存在两个已修复的问题**：会话写锁在 Android 上不可用；会话文件发布可能覆盖并发写入。补丁脚本已修正，需要用当前脚本重新构建（`TERMUX_REVISION=2`）后发布新包。
 - **搜索工具需要 ripgrep**：`pkg install ripgrep`，或用 `DSH_RG_PATH` 指定可执行文件。
 - 原生模块按 Node 24 构建，建议使用 `nodejs-lts`。升级 Node 大版本后如果报原生模块加载错误，重新安装本包即可。
 
@@ -82,7 +83,7 @@ dsh plugin --profile web list
 ```bash
 git clone https://github.com/shioochicqwq/dsh-termux.git
 cd dsh-termux
-UPSTREAM_VERSION=0.2.1-rc.2 TERMUX_REVISION=1 bash scripts/build-termux.sh
+UPSTREAM_VERSION=0.2.1-rc.2 TERMUX_REVISION=2 bash scripts/build-termux.sh
 ```
 
 需要 `node npm cmake clang make python3 git`。构建时还需要一份 Android 版 `pty.node`：已经装过 dsh-termux 时会自动取用，否则用 `PTY_NODE=/path/to/pty.node` 指定。产物在 `dist/`。

@@ -83,29 +83,59 @@ await replaceOnce("node_modules/koffi/src/koffi/CMakeLists.txt",
     endif()`,
 "koffi: resolve Node-API symbols at module load time on Android");
 
-// 5. session-persistence-jsonl: no link(2) on Android
+// 5. session-persistence-jsonl: exclusive publish without depending on link(2)
+//    Upstream publishes with link(2) on purpose: it never overwrites, and EEXIST
+//    tells the caller another writer won. Some Android sandboxes refuse link(2),
+//    so fall back to copyFile(COPYFILE_EXCL) only when link itself is refused —
+//    still no-clobber, still EEXIST on collision (a plain rename would silently
+//    overwrite a concurrent writer's log).
 const spPath = "node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js";
 const spSource = await readFile(join(root, spPath), "utf8");
 const spImportVariants = [
-  ['import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";',
-   'import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, truncate } from "node:fs/promises";'],
-  ['import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";',
-   'import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, truncate } from "node:fs/promises";'],
+  'import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";',
+  'import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, truncate } from "node:fs/promises";',
 ];
-const spImportMatches = spImportVariants.filter(([before]) => spSource.split(before).length - 1 === 1);
+const spImportMatches = spImportVariants.filter((before) => spSource.split(before).length - 1 === 1);
 if (spImportMatches.length !== 1) throw new Error(`session persistence: known import not found (${spImportMatches.length})`);
-await writeFile(join(root, spPath), spSource.replace(...spImportMatches[0]));
-applied.push("sp import"); console.log("patched: session persistence: import rename");
+await writeFile(join(root, spPath), spSource.replace(spImportMatches[0], `${spImportMatches[0].replace("{ link,", "{ copyFile, link,")}
+/** Android: link(2) may be refused by the app sandbox; publish with an exclusive copy instead. */
+async function publishExclusive(source, target, linkFn = link) {
+	try {
+		await linkFn(source, target);
+	} catch (error) {
+		if (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
+		await copyFile(source, target, 1 /* fs.constants.COPYFILE_EXCL */);
+	}
+}`));
+applied.push("sp publishExclusive"); console.log("patched: session persistence: exclusive publish helper");
 
 await replaceOnce(spPath,
 "\t\t\tawait link(tmp, finalPath);",
-'\t\t\tif (process.platform === "android") await rename(tmp, finalPath);\n\t\t\telse await link(tmp, finalPath);',
-"session persistence: publish with rename on Android");
+"\t\t\tawait publishExclusive(tmp, finalPath);",
+"session persistence: materialize with exclusive publish");
 
 await replaceOnce(spPath,
 "\t\tawait internals.fs.link(staged, currentPath);",
-'\t\tif (internals.platform === "android") await rename(staged, currentPath);\n\t\telse await internals.fs.link(staged, currentPath);',
-"session persistence: migrate with rename on Android");
+"\t\tawait publishExclusive(staged, currentPath, internals.fs.link);",
+"session persistence: migrate with exclusive publish");
+
+// 5b. node-addon-system flock: the native binding ships linux/darwin only and
+//     throws ERR_FLOCK_UNSUPPORTED_PLATFORM on Android, so every session write
+//     lock (create, append) would fail. Bind libc flock(2) through koffi (already
+//     compiled for Android in this package). LOCK_EX|LOCK_NB = 6; the binding
+//     contract is "callback(0 | positive errno)" (flock.js calls getSystemErrorName(-errno)).
+await replaceOnce("node_modules/@deepseek-ai/node-addon-system/lib/flock.js",
+`    const { platform, arch } = process;
+    if (platform !== 'linux' && platform !== 'darwin') {`,
+`    const { platform, arch } = process;
+    if (platform === 'android') {
+        const koffi = createRequire(import.meta.url)('koffi');
+        const flock = koffi.load('libc.so').func('int flock(int fd, int op)');
+        binding = { tryLock(fd, callback) { const result = flock(fd, 6); callback(result === 0 ? 0 : koffi.errno()); } };
+        return binding;
+    }
+    if (platform !== 'linux' && platform !== 'darwin') {`,
+"node-addon-system: flock via koffi on Android");
 
 // 6. terminal-bash: resolve a real shell binary
 const tbPath = "node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js";
@@ -120,7 +150,7 @@ const DEFAULT_BASH_SHELL = "/bin/bash";
 /** Shell candidates probed when no explicit shellPath is configured (Termux first). */
 const BASH_SHELL_CANDIDATES = [
 	process.env.DSH_BASH_SHELL,
-	"/data/data/com.termux/files/usr/bin/bash",
+	\`\${process.env.PREFIX ?? "/data/data/com.termux/files/usr"}/bin/bash\`,
 	"/bin/bash"
 ];
 /** Resolve the bash dialect default the way the host can actually execute it. */
@@ -141,7 +171,7 @@ await replaceOnce(tbPath,
 await replaceOnce("node_modules/@deepseek-ai/dsh-tool-fs-search/lib/index.js",
 '\t\tif ("pkg" in process && existsSync(executableSidecar)) return executableSidecar;\n\t\tconst dependency = (await import("@vscode/ripgrep")).rgPath;',
 `\t\tif ("pkg" in process && existsSync(executableSidecar)) return executableSidecar;
-		const systemRipgrep = process.platform === "android" ? process.env.DSH_RG_PATH ?? "/data/data/com.termux/files/usr/bin/rg" : process.env.DSH_RG_PATH;
+		const systemRipgrep = process.platform === "android" ? process.env.DSH_RG_PATH ?? \`\${process.env.PREFIX ?? "/data/data/com.termux/files/usr"}/bin/rg\` : process.env.DSH_RG_PATH;
 		if (typeof systemRipgrep === "string" && systemRipgrep.length > 0 && existsSync(systemRipgrep)) return systemRipgrep;
 		const dependency = (await import("@vscode/ripgrep")).rgPath;`,
 "tool-fs-search: system ripgrep fallback on Android");

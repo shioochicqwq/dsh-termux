@@ -9,8 +9,9 @@
 # at install time.
 #
 # Requirements on the builder: node, npm, cmake, clang, make, python3, git.
-# node-pty's android binary is reused from an existing dsh-termux install when
-# one is present (ABI-stable N-API); otherwise build it with node-gyp.
+# node-pty's android binary (ABI-stable N-API) is reused from an existing
+# dsh-termux install, or taken from PTY_NODE=/path/to/pty.node; the script
+# stops if neither exists.
 set -euo pipefail
 
 UPSTREAM_VERSION="${UPSTREAM_VERSION:-$(npm view @deepseek-ai/dsh version)}"

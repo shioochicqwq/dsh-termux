@@ -13,13 +13,14 @@ of shipping a half-patched artifact.
 | 2 | `koffi` `base.cc` | `ExecuteCommandLine()` returns `ENOSYS` when `__ANDROID_API__ < 28` | `posix_spawn` file actions are API 28+; the harness never calls this helper |
 | 3 | `koffi` `base.cc` | close that guard block | keeps the file compiling on non-Android |
 | 4 | `koffi` `src/koffi/CMakeLists.txt` | `-Wl,--unresolved-symbols=ignore-all` when `ANDROID` | Node-API symbols are bound from the Node process at load time |
-| 5 | `dsh-session-persistence-jsonl` | import `rename` alongside `link` | — |
-| 6 | `dsh-session-persistence-jsonl` | materialize the initial log with `rename(2)` on `android` | Android app sandboxes answer `EACCES` for every `link(2)` |
-| 7 | `dsh-session-persistence-jsonl` | migrate the current generation with `rename(2)` on `android` | same reason |
+| 5 | `dsh-session-persistence-jsonl` | add `publishExclusive()`: `link(2)` first, and only when the sandbox refuses it (`EACCES`/`EPERM`/`ENOSYS`/`ENOTSUP`/`EXDEV`) fall back to `copyFile(COPYFILE_EXCL)` | some Android sandboxes refuse `link(2)`; the fallback stays no-clobber and still reports `EEXIST` when another writer won (a plain `rename(2)` would silently overwrite it) |
+| 6 | `dsh-session-persistence-jsonl` | materialize the initial log with `publishExclusive` | same reason |
+| 7 | `dsh-session-persistence-jsonl` | migrate the current generation with `publishExclusive` | same reason |
+| 7b | `node-addon-system` `lib/flock.js` | on `android`, bind libc `flock(2)` through `koffi` (`LOCK_EX\|LOCK_NB`, callback gets `0` or the positive errno) | the native binding ships linux/darwin only and throws `ERR_FLOCK_UNSUPPORTED_PLATFORM`, which would fail every session write lock |
 | 8 | `dsh-terminal-bash` | import `existsSync` | — |
-| 9 | `dsh-terminal-bash` | probe `DSH_BASH_SHELL` → Termux `bash` → `/bin/bash` | there is no `/bin/bash` on Android |
+| 9 | `dsh-terminal-bash` | probe `DSH_BASH_SHELL` → `$PREFIX/bin/bash` (Termux) → `/bin/bash` | there is no `/bin/bash` on Android |
 | 10 | `dsh-terminal-bash` | use the probed shell as the bash default | — |
-| 11 | `dsh-tool-fs-search` | fall back to `$DSH_RG_PATH` / Termux `rg` before `@vscode/ripgrep` | `@vscode/ripgrep` ships no `android-arm64` binary |
+| 11 | `dsh-tool-fs-search` | fall back to `$DSH_RG_PATH` / `$PREFIX/bin/rg` before `@vscode/ripgrep` | `@vscode/ripgrep` ships no `android-arm64` binary |
 | 12 | `node-addon-require-builtin` | pure-JS bridge to Node internals via `createRequire` | the native binding has no Android build and publishes no source, while 0.2.x resolves profiles through Node internals at boot |
 | 13 | `lib/bin.js` | shebang runs `node --expose-internals` | required by patch 12 (and by the internal-module interception during boot) |
 
