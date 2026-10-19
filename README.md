@@ -14,10 +14,14 @@ DeepSeek Harness `0.2.1-rc.2` 的 Termux 版本，运行在 Android arm64 上。
    pkg install -y nodejs-lts python ripgrep
    ```
 
-2. 从 [Releases](../../releases) 下载 `dsh-termux-0.2.1-rc.2-termux.4.tgz`，然后在下载目录里安装：
+2. 安装（二选一）：
 
    ```bash
-   npm i -g ./dsh-termux-0.2.1-rc.2-termux.1.tgz
+   # 直接装（自动下载）
+   npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.2-termux.4/dsh-termux-0.2.1-rc.2-termux.4.tgz
+
+   # 或先从 Releases 下载 tgz，再本地安装
+   npm i -g ./dsh-termux-0.2.1-rc.2-termux.4.tgz
    ```
 
    首次安装会解包约 650 MB，视存储速度需要 10–20 分钟，中途不要中断。
@@ -96,11 +100,11 @@ MIT，见 [LICENSE](LICENSE)。构建与补丁脚本部分改编自 sunflower233
 
 ## English
 
-DeepSeek Harness `0.2.1-rc.2` for Termux on Android arm64 (`0.2.1-rc.2-termux.1`). The package ships every dependency and the Android native modules, so installing needs no npm registry access and no compiler.
+DeepSeek Harness `0.2.1-rc.2` for Termux on Android arm64 (`0.2.1-rc.2-termux.4`). The package ships every dependency and the Android native modules, so installing needs no npm registry access and no compiler.
 
 ```bash
 pkg install -y nodejs-lts python ripgrep
-npm i -g ./dsh-termux-0.2.1-rc.2-termux.1.tgz   # downloaded from Releases
+npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.2-termux.4/dsh-termux-0.2.1-rc.2-termux.4.tgz
 dsh --version   # 0.2.1-rc.2
 dsh web         # Web UI on 127.0.0.1:3080 (open the printed ?token= URL once)
 ```
