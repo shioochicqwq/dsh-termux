@@ -2,7 +2,7 @@
 
 DeepSeek Harness `0.2.1-rc.2` 的 Termux 版本，运行在 Android arm64 上。
 
-当前版本：**`0.2.1-rc.2-termux.1`**
+当前版本：**`0.2.1-rc.2-termux.4`**
 
 安装包里已经带好全部依赖和 Android 版原生模块，安装时不访问 npm 源、不需要编译工具链。
 
@@ -14,7 +14,7 @@ DeepSeek Harness `0.2.1-rc.2` 的 Termux 版本，运行在 Android arm64 上。
    pkg install -y nodejs-lts python ripgrep
    ```
 
-2. 从 [Releases](../../releases) 下载 `dsh-termux-0.2.1-rc.2-termux.1.tgz`，然后在下载目录里安装：
+2. 从 [Releases](../../releases) 下载 `dsh-termux-0.2.1-rc.2-termux.4.tgz`，然后在下载目录里安装：
 
    ```bash
    npm i -g ./dsh-termux-0.2.1-rc.2-termux.1.tgz
@@ -74,7 +74,7 @@ dsh plugin --profile web list
 ## 已知限制
 
 - **没有容器沙箱**：Android 上无法运行 `bubblewrap` / Landlock，执行命令需要使用「手动审批」策略或完全访问模式。
-- **`0.2.1-rc.2-termux.1` 安装包存在两个已修复的问题**：会话写锁在 Android 上不可用；会话文件发布可能覆盖并发写入。补丁脚本已修正，需要用当前脚本重新构建（`TERMUX_REVISION=2`）后发布新包。
+- **会话写锁/发布**：系统自带的 `flock` 原生模块没有 Android 版本，改为通过 `koffi` 直接调用 libc；会话文件与新建文件优先用硬链接独占发布，Android 拒绝硬链接时改为独占复制。
 - **搜索工具需要 ripgrep**：`pkg install ripgrep`，或用 `DSH_RG_PATH` 指定可执行文件。
 - 原生模块按 Node 24 构建，建议使用 `nodejs-lts`。升级 Node 大版本后如果报原生模块加载错误，重新安装本包即可。
 

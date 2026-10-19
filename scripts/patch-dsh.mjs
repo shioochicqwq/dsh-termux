@@ -83,6 +83,87 @@ await replaceOnce("node_modules/koffi/src/koffi/CMakeLists.txt",
     endif()`,
 "koffi: resolve Node-API symbols at module load time on Android");
 
+// 4b. fs-local: the no-replace publish path uses link(2), which some Android
+//     sandboxes refuse (EACCES) — every write/edit creating a NEW file failed
+//     with FS_IO_ERROR. Fall back to an exclusive copy, keeping the caller's
+//     no-clobber contract (EEXIST when a concurrent writer won).
+const fsLocalPath = "node_modules/@deepseek-ai/dsh-fs-local/lib/index.js";
+const fsLocalImport = 'import { chmod, link, lstat, mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";';
+const fsLocalImportPatched = 'import { chmod, copyFile, link, lstat, mkdir, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";';
+await replaceOnce(fsLocalPath, fsLocalImport, fsLocalImportPatched, "fs-local: import copyFile");
+await replaceOnce(
+  fsLocalPath,
+  "\tconst linkFile = internals.linkFile ?? link;",
+  `\tconst linkFile = internals.linkFile ?? link;
+\t/** Android: link(2) may be refused; publish with an exclusive copy instead. */
+\tconst publishNewFile = async (from, to) => {
+\t\ttry {
+\t\t\tawait linkFile(from, to);
+\t\t} catch (error) {
+\t\t\tif (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
+\t\t\tawait copyFile(from, to, 1 /* fs.constants.COPYFILE_EXCL */);
+\t\t}
+\t};`,
+  "fs-local: exclusive-copy publish helper",
+);
+await replaceOnce(
+  fsLocalPath,
+  "\t\t\tawait linkFile(tempPath, absolutePath);",
+  "\t\t\tawait publishNewFile(tempPath, absolutePath);",
+  "fs-local: use the publish helper",
+);
+
+// 4c. attachment-local: staged objects and image aliases are published with
+//     link(2) too, so attachments/read_image could not be stored on Android.
+const attachPath = "node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js";
+const attachImport = 'import { chmod, link, mkdir, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";';
+const attachImportPatched = 'import { chmod, copyFile, link, mkdir, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";';
+await replaceOnce(attachPath, attachImport, attachImportPatched, "attachment-local: import copyFile");
+await replaceOnce(
+  attachPath,
+  "async function publishImmutableAlias(",
+  `/** Android: link(2) may be refused; alias with an exclusive copy (EEXIST stays the race signal). */
+async function publishLinkOrCopy(from, to) {
+\ttry {
+\t\tawait link(from, to);
+\t} catch (error) {
+\t\tif (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
+\t\tawait copyFile(from, to, 1 /* fs.constants.COPYFILE_EXCL */);
+\t}
+}
+async function publishImmutableAlias(`,
+  "attachment-local: exclusive-copy alias helper",
+);
+await replaceOnce(attachPath, "\t\t\tawait link(source, target);", "\t\t\tawait publishLinkOrCopy(source, target);", "attachment-local: alias publication");
+await replaceOnce(attachPath, "\t\t\tawait link(staged.path, target);", "\t\t\tawait publishLinkOrCopy(staged.path, target);", "attachment-local: staged publication");
+
+// 4d. attachment-local durability walk: fsync every ancestor directory, but
+//     Android's untrusted_app domain cannot open("/data/data"), so the walk
+//     threw before storing any attachment (read_image included). Skip ancestors
+//     the sandbox refuses to open; still fsync everything we may.
+await replaceOnce(
+  attachPath,
+  `async function syncDirectory(path) {
+	/* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
+	if (process.platform === "win32") return;
+	/* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
+	const handle = await open(path, constants.O_RDONLY);`,
+  `async function syncDirectory(path) {
+	/* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
+	if (process.platform === "win32") return;
+	/* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
+	let handle;
+	try {
+		handle = await open(path, constants.O_RDONLY);
+	} catch (error) {
+		// Android's untrusted_app domain cannot open ancestors such as /data/data,
+		// so the durability walk tops out there: fsync what we may, skip the rest.
+		if (error?.code === "EACCES" || error?.code === "EPERM") return;
+		throw error;
+	}`,
+  "attachment-local: tolerate unopenable ancestors",
+);
+
 // 5. session-persistence-jsonl: exclusive publish without depending on link(2)
 //    Upstream publishes with link(2) on purpose: it never overwrites, and EEXIST
 //    tells the caller another writer won. Some Android sandboxes refuse link(2),

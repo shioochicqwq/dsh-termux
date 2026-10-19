@@ -13,6 +13,8 @@ of shipping a half-patched artifact.
 | 2 | `koffi` `base.cc` | `ExecuteCommandLine()` returns `ENOSYS` when `__ANDROID_API__ < 28` | `posix_spawn` file actions are API 28+; the harness never calls this helper |
 | 3 | `koffi` `base.cc` | close that guard block | keeps the file compiling on non-Android |
 | 4 | `koffi` `src/koffi/CMakeLists.txt` | `-Wl,--unresolved-symbols=ignore-all` when `ANDROID` | Node-API symbols are bound from the Node process at load time |
+| 4b | `dsh-fs-local` | no-replace publish falls back to `copyFile(COPYFILE_EXCL)` when `link(2)` is refused | Android sandboxes answer `EACCES` for `link(2)`; without this every `write`/`edit` creating a new file fails with `FS_IO_ERROR` |
+| 4c | `dsh-attachment-local` | staged-object and alias publication fall back to an exclusive copy | same `link(2)` refusal; without this attachments and `read_image` cannot be stored |
 | 5 | `dsh-session-persistence-jsonl` | add `publishExclusive()`: `link(2)` first, and only when the sandbox refuses it (`EACCES`/`EPERM`/`ENOSYS`/`ENOTSUP`/`EXDEV`) fall back to `copyFile(COPYFILE_EXCL)` | some Android sandboxes refuse `link(2)`; the fallback stays no-clobber and still reports `EEXIST` when another writer won (a plain `rename(2)` would silently overwrite it) |
 | 6 | `dsh-session-persistence-jsonl` | materialize the initial log with `publishExclusive` | same reason |
 | 7 | `dsh-session-persistence-jsonl` | migrate the current generation with `publishExclusive` | same reason |
