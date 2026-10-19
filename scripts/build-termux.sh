@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # build-termux.sh — assemble the dsh-termux offline package on a Termux device.
 #
-#   UPSTREAM_VERSION=0.2.1-rc.2 TERMUX_REVISION=1 bash scripts/build-termux.sh
+#   UPSTREAM_VERSION=0.2.1-rc.2 TERMUX_REVISION=5 bash scripts/build-termux.sh
 #
 # Produces dist/dsh-termux-$UPSTREAM_VERSION-termux.$TERMUX_REVISION.tgz
 # containing the full patched @deepseek-ai/dsh dependency tree, the android-arm64

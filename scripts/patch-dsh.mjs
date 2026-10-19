@@ -102,6 +102,8 @@ await replaceOnce(
 \t\t} catch (error) {
 \t\t\tif (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
 \t\t\tawait copyFile(from, to, 1 /* fs.constants.COPYFILE_EXCL */);
+\t\t\tconst copied = await open(to, "r");
+\t\t\ttry { await copied.sync(); } finally { await copied.close(); }
 \t\t}
 \t};`,
   "fs-local: exclusive-copy publish helper",
@@ -129,6 +131,8 @@ async function publishLinkOrCopy(from, to) {
 \t} catch (error) {
 \t\tif (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
 \t\tawait copyFile(from, to, 1 /* fs.constants.COPYFILE_EXCL */);
+\t\tconst copied = await open(to, "r");
+\t\ttry { await copied.sync(); } finally { await copied.close(); }
 \t}
 }
 async function publishImmutableAlias(`,
@@ -158,7 +162,7 @@ await replaceOnce(
 	} catch (error) {
 		// Android's untrusted_app domain cannot open ancestors such as /data/data,
 		// so the durability walk tops out there: fsync what we may, skip the rest.
-		if (error?.code === "EACCES" || error?.code === "EPERM") return;
+		if (process.platform === "android" && (error?.code === "EACCES" || error?.code === "EPERM")) return;
 		throw error;
 	}`,
   "attachment-local: tolerate unopenable ancestors",
@@ -186,6 +190,8 @@ async function publishExclusive(source, target, linkFn = link) {
 	} catch (error) {
 		if (!["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
 		await copyFile(source, target, 1 /* fs.constants.COPYFILE_EXCL */);
+		const copied = await open(target, "r");
+		try { await copied.sync(); } finally { await copied.close(); }
 	}
 }`));
 applied.push("sp publishExclusive"); console.log("patched: session persistence: exclusive publish helper");
