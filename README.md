@@ -1,8 +1,8 @@
 # dsh-termux
 
-DeepSeek Harness `0.2.1-rc.2` 的 Termux 版本，在 Android（arm64）上直接运行 `dsh`。
+DeepSeek Harness `0.2.1-rc.4` 的 Termux 版本，在 Android（arm64）上直接运行 `dsh`。
 
-当前版本：**`0.2.1-rc.2-termux.4`**
+当前版本：**`0.2.1-rc.4-termux.1`**
 
 安装包是离线包：全部依赖和 Android 版原生模块都已打包，安装时只下载这一个文件，不访问 npm 源，也不需要编译。
 
@@ -10,12 +10,12 @@ DeepSeek Harness `0.2.1-rc.2` 的 Termux 版本，在 Android（arm64）上直�
 
 ```bash
 pkg install -y nodejs-lts python ripgrep
-npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.2-termux.4/dsh-termux-0.2.1-rc.2-termux.4.tgz
-dsh --version     # 0.2.1-rc.2
+npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.4-termux.1/dsh-termux-0.2.1-rc.4-termux.1.tgz
+dsh --version     # 0.2.1-rc.4
 ```
 
 - 安装包约 80 MB，解包后约 480 MB、6 万多个文件，手机上通常要 10 分钟以上，中途不要关闭 Termux。
-- 网络不稳时，可以先在 [Releases](../../releases) 下载 `.tgz`，再在下载目录里执行 `npm i -g ./dsh-termux-0.2.1-rc.2-termux.4.tgz`。
+- 网络不稳时，可以先在 [Releases](../../releases) 下载 `.tgz`，再在下载目录里执行 `npm i -g ./dsh-termux-0.2.1-rc.4-termux.1.tgz`。
 - 本包提供 `dsh` 命令。如果之前用别的方式全局装过 dsh，先 `npm uninstall -g` 掉，否则两个包会抢同一个命令。
 
 **升级**：用新版本的地址或文件再执行一次 `npm i -g …`，会直接覆盖。
@@ -69,7 +69,7 @@ Android 的应用沙箱和 Termux 的目录结构与桌面 Linux 不同，以下
 pkg install -y nodejs-lts python git cmake clang make
 git clone https://github.com/shioochicqwq/dsh-termux.git
 cd dsh-termux
-UPSTREAM_VERSION=0.2.1-rc.2 TERMUX_REVISION=4 bash scripts/build-termux.sh
+UPSTREAM_VERSION=0.2.1-rc.4 TERMUX_REVISION=1 bash scripts/build-termux.sh
 ```
 
 构建需要一份 Android 版 `pty.node`：已经装过 dsh-termux 时会自动取用，否则用 `PTY_NODE=/path/to/pty.node` 指定。构建结束时会检查所有补丁是否生效，产物在 `dist/`。
@@ -82,12 +82,12 @@ MIT，见 [LICENSE](LICENSE)。构建与补丁脚本部分改编自 sunflower233
 
 ## English
 
-DeepSeek Harness `0.2.1-rc.2` for Termux on Android arm64 (`0.2.1-rc.2-termux.4`). The package is offline: every dependency and the Android native modules are bundled, so installing downloads one file and needs no npm registry access and no compiler.
+DeepSeek Harness `0.2.1-rc.4` for Termux on Android arm64 (`0.2.1-rc.4-termux.1`). The package is offline: every dependency and the Android native modules are bundled, so installing downloads one file and needs no npm registry access and no compiler.
 
 ```bash
 pkg install -y nodejs-lts python ripgrep
-npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.2-termux.4/dsh-termux-0.2.1-rc.2-termux.4.tgz
-dsh --version   # 0.2.1-rc.2
+npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.4-termux.1/dsh-termux-0.2.1-rc.4-termux.1.tgz
+dsh --version   # 0.2.1-rc.4
 dsh web         # Web UI on 127.0.0.1:3080; open the printed ?token= URL once
 ```
 

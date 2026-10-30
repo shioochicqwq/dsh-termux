@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * patch-021.mjs — Android/Termux source patches for @deepseek-ai/dsh 0.2.1-rc.2.
+ * patch-021.mjs — Android/Termux source patches for @deepseek-ai/dsh 0.2.1-rc.x (verified on rc.2 and rc.4).
  * Run against the assembled Termux package dir (has lib/bin.js + node_modules/).
  * Every replacement asserts an exact match count.
  * Derived from sunflower2333/dsh-android scripts/patch-dsh.mjs (MIT),
- * Vengisk/deepseek-harness-termux patches, rebased onto 0.2.1-rc.2.
+ * Vengisk/deepseek-harness-termux patches, rebased onto 0.2.1-rc.2 (unchanged for rc.4).
  */
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import { join } from "node:path";

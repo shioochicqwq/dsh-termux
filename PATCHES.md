@@ -1,7 +1,7 @@
 # Android / Termux compatibility patches
 
 The release tarball is produced from the published `@deepseek-ai/dsh` npm
-package (`0.2.1-rc.2`) by `scripts/patch-dsh.mjs`. Every replacement asserts an
+package (`0.2.1-rc.4`) by `scripts/patch-dsh.mjs`. Every replacement asserts an
 **exact match count**, so an upstream refactor fails the build loudly instead
 of shipping a half-patched artifact.
 
@@ -39,7 +39,14 @@ launcher still ships the patch-file watcher; 0.2.1 does not, so it reports
 | `koffi@3.1.1` | compiled on device (`cnoke.cjs`, clang + cmake) after patches 1–4 |
 | `sharp@0.35.5` | no Android native build; `@img/sharp-wasm32` (+ `@emnapi/runtime`) provides the WebAssembly fallback |
 
-## Already fixed upstream — no patch needed on 0.2.1-rc.2
+`0.2.1-rc.4-termux.1`: all 22 source edits applied to 0.2.1-rc.4 with the same
+match counts as on 0.2.1-rc.2. `koffi` (3.1.1), `node-pty` (1.2.0-beta.15) and
+`sharp` (0.35.5) did not change between rc.2 and rc.4, so this release reuses the
+android-arm64 binaries built on device for `0.2.1-rc.2-termux.4` (the whole
+`koffi`, `node-pty`, `@img/sharp-wasm32` and `@emnapi` trees) instead of
+recompiling them; the JavaScript tree is the fresh rc.4 install.
+
+## Already fixed upstream — no patch needed on 0.2.1-rc.x
 
 - `dsh-fs-local` publishes new files with `rename()` (0.1.x needed a `link()`
   fallback for the `write`/`edit` tools).
