@@ -1,26 +1,34 @@
 #!/usr/bin/env node
 /**
- * patch-021.mjs — Android/Termux source patches for @deepseek-ai/dsh 0.2.1-rc.x (verified on rc.2 and rc.4).
+ * Android/Termux source patches for the pinned @deepseek-ai/dsh staging target.
  * Run against the assembled Termux package dir (has lib/bin.js + node_modules/).
  * Every replacement asserts an exact match count.
  * Derived from sunflower2333/dsh-android scripts/patch-dsh.mjs (MIT),
  * Vengisk/deepseek-harness-termux patches, rebased onto 0.2.1-rc.2 (unchanged for rc.4).
  */
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { assertUpstream } from "./target.mjs";
 
 const root = process.argv[2];
-if (!root) throw new Error("usage: patch-021.mjs <dsh-package-directory>");
+if (!root) throw new Error("usage: patch-dsh.mjs <dsh-package-directory>");
+assertUpstream(JSON.parse(await readFile(join(root, "package.json"), "utf8")));
 
+// Validate every source match before writing any files to the fresh staging tree.
 const applied = [];
+const staged = new Map();
+async function readSource(path) {
+  return staged.get(path) ?? await readFile(join(root, path), "utf8");
+}
+function stage(path, source, label) {
+  staged.set(path, source);
+  applied.push(label);
+}
 async function replaceOnce(relativePath, before, after, label) {
-  const filename = join(root, relativePath);
-  const source = await readFile(filename, "utf8");
+  const source = await readSource(relativePath);
   const matches = source.split(before).length - 1;
   if (matches !== 1) throw new Error(`${label}: expected exactly one match in ${relativePath}, found ${matches}`);
-  await writeFile(filename, source.replace(before, after));
-  applied.push(label);
-  console.log(`patched: ${label}`);
+  stage(relativePath, source.replace(before, () => after), label);
 }
 
 // 1. koffi statx fallback on Android
@@ -36,8 +44,7 @@ const koffiVariants = [
 ];
 const koffiMatches = koffiVariants.filter(([before]) => koffiSource.split(before).length - 1 === 1);
 if (koffiMatches.length !== 1) throw new Error(`koffi: expected exactly one known statx condition, found ${koffiMatches.length}`);
-await writeFile(join(root, koffiPath), koffiSource.replace(...koffiMatches[0]));
-applied.push("koffi statx"); console.log("patched: koffi: fstatat fallback on Android");
+await replaceOnce(koffiPath, ...koffiMatches[0], "koffi: fstatat fallback on Android");
 
 // 2. koffi: disable posix_spawn helper below API 28
 await replaceOnce(koffiPath,
@@ -182,7 +189,7 @@ const spImportVariants = [
 ];
 const spImportMatches = spImportVariants.filter((before) => spSource.split(before).length - 1 === 1);
 if (spImportMatches.length !== 1) throw new Error(`session persistence: known import not found (${spImportMatches.length})`);
-await writeFile(join(root, spPath), spSource.replace(spImportMatches[0], `${spImportMatches[0].replace("{ link,", "{ copyFile, link,")}
+await replaceOnce(spPath, spImportMatches[0], `${spImportMatches[0].replace("{ link,", "{ copyFile, link,")}
 /** Android: link(2) may be refused by the app sandbox; publish with an exclusive copy instead. */
 async function publishExclusive(source, target, linkFn = link) {
 	try {
@@ -193,8 +200,7 @@ async function publishExclusive(source, target, linkFn = link) {
 		const copied = await open(target, "r");
 		try { await copied.sync(); } finally { await copied.close(); }
 	}
-}`));
-applied.push("sp publishExclusive"); console.log("patched: session persistence: exclusive publish helper");
+}`, "session persistence: exclusive publish helper");
 
 await replaceOnce(spPath,
 "\t\t\tawait link(tmp, finalPath);",
@@ -205,6 +211,27 @@ await replaceOnce(spPath,
 "\t\tawait internals.fs.link(staged, currentPath);",
 "\t\tawait publishExclusive(staged, currentPath, internals.fs.link);",
 "session persistence: migrate with exclusive publish");
+
+// SQLite retains a durable no-clobber routing marker (not the database file).
+// Keep its Windows and other POSIX paths unchanged, and preserve EEXIST.
+const sqlitePath = "node_modules/@deepseek-ai/dsh-session-persistence-sqlite/lib/index.js";
+await replaceOnce(sqlitePath,
+  'import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat } from "node:fs/promises";',
+  'import { copyFile, link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat } from "node:fs/promises";\nimport { constants as fsConstants } from "node:fs";',
+  "SQLite routing: import exclusive copy support");
+await replaceOnce(sqlitePath,
+  '\t\t\t\telse await link(temporary, path);',
+  `\t\t\t\telse {
+\t\t\t\t\ttry {
+\t\t\t\t\t\tawait link(temporary, path);
+\t\t\t\t\t} catch (error) {
+\t\t\t\t\t\tif (process.platform !== "android" || !["EACCES", "EPERM", "ENOSYS", "ENOTSUP", "EXDEV"].includes(error?.code)) throw error;
+\t\t\t\t\t\tawait copyFile(temporary, path, fsConstants.COPYFILE_EXCL);
+\t\t\t\t\t\tconst copied = await open(path, "r");
+\t\t\t\t\t\ttry { await copied.sync(); } finally { await copied.close(); }
+\t\t\t\t\t}
+\t\t\t\t}`,
+  "SQLite routing: fall back to exclusive copy on Android");
 
 // 5b. node-addon-system flock: the native binding ships linux/darwin only and
 //     throws ERR_FLOCK_UNSUPPORTED_PLATFORM on Android, so every session write
@@ -254,36 +281,26 @@ await replaceOnce(tbPath,
 ': shellDialect === "pwsh" ? resolvePwshPath() : resolveBashShell(),',
 "terminal-bash: use resolved shell on Android");
 
-// 7. tool-fs-search: system ripgrep fallback on Android
-await replaceOnce("node_modules/@deepseek-ai/dsh-tool-fs-search/lib/index.js",
+// 7. The alpha moved ripgrep resolution out of tool-fs-search into a shared utility.
+await replaceOnce("node_modules/@deepseek-ai/dsh-util-ripgrep/lib/index.js",
 '\t\tif ("pkg" in process && existsSync(executableSidecar)) return executableSidecar;\n\t\tconst dependency = (await import("@vscode/ripgrep")).rgPath;',
 `\t\tif ("pkg" in process && existsSync(executableSidecar)) return executableSidecar;
-		const systemRipgrep = process.platform === "android" ? process.env.DSH_RG_PATH ?? \`\${process.env.PREFIX ?? "/data/data/com.termux/files/usr"}/bin/rg\` : process.env.DSH_RG_PATH;
-		if (typeof systemRipgrep === "string" && systemRipgrep.length > 0 && existsSync(systemRipgrep)) return systemRipgrep;
+		if (process.platform === "android") {
+			const systemRipgrep = process.env.DSH_RG_PATH ?? \`\${process.env.PREFIX ?? "/data/data/com.termux/files/usr"}/bin/rg\`;
+			if (existsSync(systemRipgrep)) return systemRipgrep;
+			throw new Error("Termux ripgrep not found: install it with pkg install ripgrep, or set DSH_RG_PATH");
+		}
+		if (process.env.DSH_RG_PATH && existsSync(process.env.DSH_RG_PATH)) return process.env.DSH_RG_PATH;
 		const dependency = (await import("@vscode/ripgrep")).rgPath;`,
 "tool-fs-search: system ripgrep fallback on Android");
 
-// 8. HMR guard, only if the launcher still ships the patch-file watcher
-const libFiles = await readdir(join(root, "lib"));
-const profileBootMatches = [];
-for (const name of libFiles) {
-  if (!/^profile-boot-.*\.js$/.test(name)) continue;
-  const source = await readFile(join(root, "lib", name), "utf8");
-  if (source.includes("watchUserPatches(ctx")) profileBootMatches.push(join("lib", name));
-}
-if (profileBootMatches.length > 1) throw new Error(`HMR patch: expected one impl chunk, found ${profileBootMatches.length}`);
-if (profileBootMatches.length === 1) {
-  await replaceOnce(profileBootMatches[0],
-`\t\tif (ctx.get("hmr") === void 0) {`,
-`\t\tif (ctx.get("hmr") === void 0 && process.execArgv.includes("--expose-internals")) {`,
-"dsh: skip HMR without --expose-internals");
-} else {
-  console.log("skipped: HMR patch — 0.2.1 launcher has no patch-file watcher");
-}
-
-// 9. node-addon-require-builtin: pure-JS bridge to Node internals
+// The alpha launcher no longer contains the legacy patch-file watcher.
+// node-addon-require-builtin: pure-JS bridge to Node internals.
 const requireBuiltinPath = "node_modules/node-addon-require-builtin/lib/index.js";
-await writeFile(join(root, requireBuiltinPath), `"use strict";
+const requireBuiltinSource = await readSource(requireBuiltinPath);
+const nativeLoader = "const api = createEntryApi(node_path_1.default.resolve(__dirname, '..'));";
+if (requireBuiltinSource.split(nativeLoader).length - 1 !== 1) throw new Error("require-builtin: unexpected upstream native loader");
+stage(requireBuiltinPath, `"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireBuiltin = requireBuiltin;
 exports.isAllowedInternalId = isAllowedInternalId;
@@ -299,10 +316,11 @@ const node_module_1 = require("node:module");
  */
 const internalRequire = (0, node_module_1.createRequire)(__filename);
 function requireBuiltin(moduleId) {
+    if (!isAllowedInternalId(moduleId)) throw new TypeError("expected a Node internal module ID");
     return internalRequire(moduleId);
 }
 function isAllowedInternalId(moduleId) {
-    return typeof moduleId === "string";
+    return typeof moduleId === "string" && /^internal(?:\\/[a-zA-Z0-9_-]+)+$/.test(moduleId);
 }
 function getBindingInfo() {
     return {
@@ -313,23 +331,13 @@ function getBindingInfo() {
     };
 }
 exports.default = { requireBuiltin, isAllowedInternalId, getBindingInfo };
-`);
-applied.push("require-builtin shim");
-console.log("patched: require-builtin: expose-internals shim");
+`, "require-builtin: expose-internals shim");
 
-// 10. lib/bin.js: launch node with --expose-internals (required by that shim
-//     and by the internal-module interception the 0.2.x boot performs)
-const binPath = "lib/bin.js";
-const binSource = await readFile(join(root, binPath), "utf8");
-if (!binSource.startsWith("#!")) throw new Error("bin.js: missing shebang");
-if (!binSource.includes("--expose-internals")) {
-	const [shebang, ...rest] = binSource.split("\n");
-	const launcher = process.env.DSH_NODE_BIN ?? "/data/data/com.termux/files/usr/bin/node";
-	await writeFile(join(root, binPath), `#!${launcher} --expose-internals\n${rest.join("\n")}`);
-	applied.push("bin.js shebang");
-	console.log("patched: lib/bin.js: node --expose-internals");
-} else {
-	console.log("skipped: lib/bin.js shebang already carries --expose-internals");
-}
+// lib/bin.js: --expose-internals must be a direct argument, not NODE_OPTIONS.
+const launcher = process.env.DSH_NODE_BIN ?? "/data/data/com.termux/files/usr/bin/node";
+if (!/^\/\S+$/.test(launcher)) throw new Error("DSH_NODE_BIN must be an absolute Node path without whitespace");
+await replaceOnce("lib/bin.js", "#!/usr/bin/env node\n", `#!${launcher} --expose-internals\n`, "lib/bin.js: node --expose-internals");
 
+for (const [path, source] of staged) await writeFile(join(root, path), source);
+for (const label of applied) console.log(`patched: ${label}`);
 console.log(`\npatch summary: ${applied.length} edits applied`);

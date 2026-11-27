@@ -2,7 +2,9 @@
 
 DeepSeek Harness `0.2.1-rc.4` 的 Termux 版本，在 Android（arm64）上直接运行 `dsh`。
 
-当前版本：**`0.2.1-rc.4-termux.1`**
+当前已发布版本：**`0.2.1-rc.4-termux.1`**。下面的安装命令仍指向该版本。
+
+**Alpha 暂存（未发布）**：当前源码对齐 `@deepseek-ai/dsh@0.2.3-alpha.2`，候选包名为 `dsh-termux@0.2.3-alpha.2-termux.1`。目前只在 Linux 上验证了 Android arm64 目标的真实 npm 依赖树、源码补丁和包元数据；尚未在 Android/Termux 上编译、安装或运行，也没有可安装的候选包。
 
 安装包是离线包：全部依赖和 Android 版原生模块都已打包，安装时只下载这一个文件，不访问 npm 源，也不需要编译。
 
@@ -63,16 +65,31 @@ Android 的应用沙箱和 Termux 的目录结构与桌面 Linux 不同，以下
 - **路径固定为 Termux 默认前缀**：`dsh` 的启动行写死了 `/data/data/com.termux/files/usr/bin/node`，不支持改过安装前缀的 Termux。
 - **用 `node` 直接运行入口文件时要带上 `--expose-internals`**，否则 profile 无法加载。正常使用 `dsh` 命令不受影响。
 
-## 从源码构建（在 Termux 里）
+## 从源码构建（Android arm64 / Termux）
+
+### 已发布版本（历史构建）
 
 ```bash
 pkg install -y nodejs-lts python git cmake clang make
-git clone https://github.com/shioochicqwq/dsh-termux.git
+git clone --branch v0.2.1-rc.4-termux.1 https://github.com/shioochicqwq/dsh-termux.git
 cd dsh-termux
 UPSTREAM_VERSION=0.2.1-rc.4 TERMUX_REVISION=1 bash scripts/build-termux.sh
 ```
 
-构建需要一份 Android 版 `pty.node`：已经装过 dsh-termux 时会自动取用，否则用 `PTY_NODE=/path/to/pty.node` 指定。构建结束时会检查所有补丁是否生效，产物在 `dist/`。
+旧版构建需要一份 Android 版 `pty.node`：已经装过 dsh-termux 时会尝试取用，否则用 `PTY_NODE=/path/to/pty.node` 指定。
+
+### Alpha 暂存分支（仅供真机验证）
+
+先用 `node --version` 确认 Termux 提供满足 **`^24.22.3 || >=26.13.1`** 的 Node.js，且编译时不能禁用 `node:sqlite`。Node 24.22.2、25.x、26.13.0 及预发行版不满足要求；不要绕过检查。若本机软件源还不提供兼容版本，请暂用上面的已发布版本。
+
+```bash
+# 在当前源码目录用 Termux 执行，安装与设备适配测试前不要用生产 DSH_HOME。
+pkg install -y python git cmake clang make ripgrep
+node --version
+PTY_NODE=/path/to/android-arm64/pty.node bash scripts/build-termux.sh
+```
+
+`PTY_NODE` 需要是 `node-pty@1.2.0-beta.15` 的 Android arm64 原生模块；不指定时，脚本会在已安装的 `dsh-termux` 的 `prebuilds/android-arm64` 下查找。构建入口在开始安装前检查 Node、平台和 PTY 文件；验证通过才会生成 `dist/` 中的候选包及校验和。Linux 上不要尝试生成可发布的 Android 包。
 
 ## 许可
 
@@ -82,7 +99,7 @@ MIT，见 [LICENSE](LICENSE)。构建与补丁脚本部分改编自 sunflower233
 
 ## English
 
-DeepSeek Harness `0.2.1-rc.4` for Termux on Android arm64 (`0.2.1-rc.4-termux.1`). The package is offline: every dependency and the Android native modules are bundled, so installing downloads one file and needs no npm registry access and no compiler.
+The released package is DeepSeek Harness `0.2.1-rc.4` for Termux on Android arm64 (`0.2.1-rc.4-termux.1`). It bundles all dependencies and native modules for offline installation. The `0.2.3-alpha.2` sources on this branch are staging only: they require Node `^24.22.3 || >=26.13.1` and have not been built or tested on Android. No alpha installer is available.
 
 ```bash
 pkg install -y nodejs-lts python ripgrep

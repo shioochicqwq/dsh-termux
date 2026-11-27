@@ -7,18 +7,28 @@
  */
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { assertUpstream, UPSTREAM_VERSION } from "./target.mjs";
 
 const [root, packageVersion] = process.argv.slice(2);
 if (!root || !packageVersion) throw new Error("usage: prepare-package.mjs <dir> <version>");
+const prefix = `${UPSTREAM_VERSION}-termux.`;
+if (!packageVersion.startsWith(prefix) || !/^[1-9][0-9]*$/.test(packageVersion.slice(prefix.length))) {
+  throw new Error(`expected staging version ${prefix}<positive integer>`);
+}
 
 const manifestPath = join(root, "package.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+assertUpstream(manifest);
+const directDependencies = Object.keys(manifest.dependencies);
 manifest.name = "dsh-termux";
 manifest.version = packageVersion;
 manifest.bin = { dsh: "lib/bin.js", "dsh-termux": "lib/bin.js" };
 delete manifest.scripts;
 delete manifest.devDependencies;
 delete manifest.optionalDependencies;
+delete manifest.publishConfig;
+manifest.os = ["android"];
+manifest.cpu = ["arm64"];
 
 const packageDirectories = [];
 for (const entry of await readdir(join(root, "node_modules"), { withFileTypes: true })) {
@@ -31,14 +41,8 @@ for (const entry of await readdir(join(root, "node_modules"), { withFileTypes: t
 
 const installed = [];
 for (const directory of packageDirectories) {
-  let dependency;
-  try {
-    dependency = JSON.parse(await readFile(join(root, "node_modules", directory, "package.json"), "utf8"));
-  } catch {
-    console.warn(`skip: ${directory} has no readable package.json`);
-    continue;
-  }
-  if (typeof dependency.name !== "string" || typeof dependency.version !== "string") {
+  const dependency = JSON.parse(await readFile(join(root, "node_modules", directory, "package.json"), "utf8"));
+  if (dependency.name !== directory || typeof dependency.version !== "string") {
     throw new Error(`invalid installed package metadata in ${directory}`);
   }
   installed.push([dependency.name, dependency.version]);
@@ -47,8 +51,11 @@ installed.sort(([left], [right]) => left.localeCompare(right));
 
 manifest.dependencies = Object.fromEntries(installed);
 const dependencies = installed.map(([name]) => name);
-for (const required of ["@img/sharp-wasm32", "@emnapi/runtime"]) {
-  if (!dependencies.includes(required)) throw new Error(`package is missing required dependency ${required}`);
+for (const required of [...directDependencies, "@img/sharp-wasm32", "@emnapi/runtime"]) {
+  if (!Object.hasOwn(manifest.dependencies, required)) throw new Error(`package is missing required dependency ${required}`);
+}
+if (!manifest.dependencies.sharp || manifest.dependencies.sharp !== manifest.dependencies["@img/sharp-wasm32"]) {
+  throw new Error("sharp WASM fallback must match the bundled sharp version");
 }
 manifest.bundledDependencies = dependencies;
 

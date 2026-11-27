@@ -1,9 +1,17 @@
 # Android / Termux compatibility patches
 
-The release tarball is produced from the published `@deepseek-ai/dsh` npm
-package (`0.2.1-rc.4`) by `scripts/patch-dsh.mjs`. Every replacement asserts an
-**exact match count**, so an upstream refactor fails the build loudly instead
-of shipping a half-patched artifact.
+The published `0.2.1-rc.4-termux.1` tarball was built from the official `@deepseek-ai/dsh@0.2.1-rc.4` npm package. This branch instead stages `@deepseek-ai/dsh@0.2.3-alpha.2` (no Android-tested artifact). The patch script checks the upstream package identity and Node engine range and validates each source match before writing any patches.
+
+## 0.2.3-alpha.2 staging delta
+
+- The source ancestry is [sunflower2333/dsh-android `v0.2.2-rc.5-termux.1`](https://github.com/sunflower2333/dsh-android/releases/tag/v0.2.2-rc.5-termux.1). Its native packaging notes are useful, but its JSONL `rename()` fallback may overwrite an existing destination; this fork retains its exclusive-copy fallback.
+- Ripgrep selection moved to `@deepseek-ai/dsh-util-ripgrep`; Termux uses `DSH_RG_PATH` or `$PREFIX/bin/rg` and reports a missing system `rg` without trying an unavailable Android npm binary.
+- The alpha packages both JSONL (still the default Web profile backend) and SQLite. Keep the existing JSONL and `flock` adaptations and handle the optional SQLite backend’s routing marker on Android: hard link first, then `COPYFILE_EXCL` and file sync for sandbox-rejected links. The existing marker validation and directory sync are unchanged. This does not switch storage backends or migrate user data.
+- The legacy patch-file HMR watcher remains absent. The Node internals shim and interpreter flag are still needed for profile resolution.
+- The build checks Node `^24.22.3 || >=26.13.1`, Android arm64 and `node:sqlite` before allocating build space. The target tree has no `esbuild` dependency; no extra esbuild package is injected. Native dependency versions were resolved as `koffi@3.1.1`, `node-pty@1.2.0-beta.15` and `sharp@0.35.5` with matching WASM.
+- Linux validation with Node `24.22.3` applied 24 edits against the Android-targeted npm tree and prepared a manifest with 601 top-level bundled dependencies. The patched CLI’s version/configuration commands and a sharp WASM encode passed on Linux. Android native build/load, installation, Web, session, filesystem, search and PTY behavior remain unverified.
+
+## Released `0.2.1-rc.4-termux.1` baseline
 
 ## Source patches
 
@@ -46,12 +54,7 @@ android-arm64 binaries built on device for `0.2.1-rc.2-termux.4` (the whole
 `koffi`, `node-pty`, `@img/sharp-wasm32` and `@emnapi` trees) instead of
 recompiling them; the JavaScript tree is the fresh rc.4 install.
 
-## Already fixed upstream — no patch needed on 0.2.1-rc.x
-
-- `dsh-fs-local` publishes new files with `rename()` (0.1.x needed a `link()`
-  fallback for the `write`/`edit` tools).
-- `dsh-attachment-local` likewise uses `rename()`.
-- The `--expose-internals` HMR workaround for the patch-file watcher is gone.
+The legacy patch-file HMR workaround was not needed for `0.2.1-rc.4`. The no-clobber paths in `dsh-fs-local` and `dsh-attachment-local` still needed the hard-link fallbacks shown above.
 
 ## Known limitations
 
