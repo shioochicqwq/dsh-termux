@@ -1,10 +1,10 @@
 # dsh-termux
 
-DeepSeek Harness `0.2.1-rc.4` 的 Termux 版本，在 Android（arm64）上直接运行 `dsh`。
+DeepSeek Harness `0.2.3-alpha.2` 的 Termux 版本，在 Android（arm64）上直接运行 `dsh`。
 
-当前已发布版本：**`0.2.1-rc.4-termux.1`**。下面的安装命令仍指向该版本。
+当前已发布版本：**`0.2.3-alpha.2-termux.1`**。这是第一个在真机上构建并验证的 alpha 包：编译、安装、启动、Web 页面与插件加载均在 Termux（Node 26.13.1，Android arm64）上实测通过。
 
-**Alpha 暂存（未发布）**：当前源码对齐 `@deepseek-ai/dsh@0.2.3-alpha.2`，候选包名为 `dsh-termux@0.2.3-alpha.2-termux.1`。目前只在 Linux 上验证了 Android arm64 目标的真实 npm 依赖树、源码补丁和包元数据；尚未在 Android/Termux 上编译、安装或运行，也没有可安装的候选包。
+上游 0.2.3 仍属 alpha：接口与会话格式可能继续变动，升级前建议备份 `~/.dsh`。
 
 安装包是离线包：全部依赖和 Android 版原生模块都已打包，安装时只下载这一个文件，不访问 npm 源，也不需要编译。
 
@@ -12,12 +12,14 @@ DeepSeek Harness `0.2.1-rc.4` 的 Termux 版本，在 Android（arm64）上直�
 
 ```bash
 pkg install -y nodejs-lts python ripgrep
-npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.4-termux.1/dsh-termux-0.2.1-rc.4-termux.1.tgz
-dsh --version     # 0.2.1-rc.4
+npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.3-alpha.2-termux.1/dsh-termux-0.2.3-alpha.2-termux.1.tgz
+dsh --version     # 0.2.3-alpha.2
 ```
 
-- 安装包约 80 MB，解包后约 480 MB、6 万多个文件，手机上通常要 10 分钟以上，中途不要关闭 Termux。
-- 网络不稳时，可以先在 [Releases](../../releases) 下载 `.tgz`，再在下载目录里执行 `npm i -g ./dsh-termux-0.2.1-rc.4-termux.1.tgz`。
+Node.js 需满足 **`^24.22.3 || >=26.13.1`**，且必须提供 `node:sqlite`：Termux 的 `nodejs-lts`（24.22.3）或 `nodejs`（26.13.1）都可以。用 `node --version` 确认；低于该范围的版本会在启动时直接报错。
+
+- 安装包约 180 MB，解包后约 1.3 GB、10 万多个文件，手机上通常要 20–40 分钟，中途不要关闭 Termux。
+- 网络不稳时，可以先在 [Releases](../../releases) 下载 `.tgz`，再在下载目录里执行 `npm i -g ./dsh-termux-0.2.3-alpha.2-termux.1.tgz`。
 - 本包提供 `dsh` 命令。如果之前用别的方式全局装过 dsh，先 `npm uninstall -g` 掉，否则两个包会抢同一个命令。
 
 **升级**：用新版本的地址或文件再执行一次 `npm i -g …`，会直接覆盖。
@@ -61,35 +63,26 @@ Android 的应用沙箱和 Termux 的目录结构与桌面 Linux 不同，以下
 ## 已知限制
 
 - **没有容器沙箱**：Android 上无法运行 `bubblewrap` / Landlock。执行命令请使用「手动审批」策略，或明确选择完全访问模式。
-- **需要 ripgrep**：搜索工具依赖 `rg`，`pkg install ripgrep` 即可。
+- **需要 ripgrep**：搜索工具依赖 `rg`，`pkg install ripgrep` 即可（也可用 `DSH_RG_PATH` 指定）。
+- **插件需匹配内核版本**：profile 里固定在 `0.2.1-rc.4` 的插件会被 0.2.3-alpha.2 判为不兼容并禁用，需要升级到面向 alpha 的版本（例如 DSH Remote 的 `dsh-mobile-remote` 3.17.2-alpha.1）。
 - **路径固定为 Termux 默认前缀**：`dsh` 的启动行写死了 `/data/data/com.termux/files/usr/bin/node`，不支持改过安装前缀的 Termux。
 - **用 `node` 直接运行入口文件时要带上 `--expose-internals`**，否则 profile 无法加载。正常使用 `dsh` 命令不受影响。
 
 ## 从源码构建（Android arm64 / Termux）
 
-### 已发布版本（历史构建）
-
 ```bash
-pkg install -y nodejs-lts python git cmake clang make
-git clone --branch v0.2.1-rc.4-termux.1 https://github.com/shioochicqwq/dsh-termux.git
+pkg install -y nodejs python git cmake clang make ripgrep
+node --version          # 需 ^24.22.3 || >=26.13.1，且提供 node:sqlite
+git clone --branch v0.2.3-alpha.2-termux.1 https://github.com/shioochicqwq/dsh-termux.git
 cd dsh-termux
-UPSTREAM_VERSION=0.2.1-rc.4 TERMUX_REVISION=1 bash scripts/build-termux.sh
-```
-
-旧版构建需要一份 Android 版 `pty.node`：已经装过 dsh-termux 时会尝试取用，否则用 `PTY_NODE=/path/to/pty.node` 指定。
-
-### Alpha 暂存分支（仅供真机验证）
-
-先用 `node --version` 确认 Termux 提供满足 **`^24.22.3 || >=26.13.1`** 的 Node.js，且编译时不能禁用 `node:sqlite`。Node 24.22.2、25.x、26.13.0 及预发行版不满足要求；不要绕过检查。若本机软件源还不提供兼容版本，请暂用上面的已发布版本。
-
-```bash
-# 在当前源码目录用 Termux 执行，安装与设备适配测试前不要用生产 DSH_HOME。
-pkg install -y python git cmake clang make ripgrep
-node --version
 PTY_NODE=/path/to/android-arm64/pty.node bash scripts/build-termux.sh
 ```
 
-`PTY_NODE` 需要是 `node-pty@1.2.0-beta.15` 的 Android arm64 原生模块；不指定时，脚本会在已安装的 `dsh-termux` 的 `prebuilds/android-arm64` 下查找。构建入口在开始安装前检查 Node、平台和 PTY 文件；验证通过才会生成 `dist/` 中的候选包及校验和。Linux 上不要尝试生成可发布的 Android 包。
+- 必须在 Android arm64 的 Termux 上构建；脚本会拒绝在 Linux 上生成可发布的 Android 包。
+- `PTY_NODE` 需要是 `node-pty@1.2.0-beta.15` 的 Android arm64 原生模块；不指定时，脚本会从已安装的 `dsh-termux` 的 `prebuilds/android-arm64` 下取用。
+- 构建入口在下载依赖之前先检查 Node 版本、平台、`node:sqlite` 和 PTY 文件，任一不满足立即失败。整个过程约 30–40 分钟，峰值需要约 3 GB 空闲空间。
+- 产物在 `dist/`：`dsh-termux-<version>.tgz` 与同名 `.sha256`，安装前可以先 `sha256sum -c` 校验。
+- `0.2.3-alpha.2-termux.1` 即由该流程在真机构建，并在同一台设备上完成安装、启动与插件加载验证。
 
 ## 许可
 
@@ -99,13 +92,13 @@ MIT，见 [LICENSE](LICENSE)。构建与补丁脚本部分改编自 sunflower233
 
 ## English
 
-The released package is DeepSeek Harness `0.2.1-rc.4` for Termux on Android arm64 (`0.2.1-rc.4-termux.1`). It bundles all dependencies and native modules for offline installation. The `0.2.3-alpha.2` sources on this branch are staging only: they require Node `^24.22.3 || >=26.13.1` and have not been built or tested on Android. No alpha installer is available.
+The released package is DeepSeek Harness `0.2.3-alpha.2` for Termux on Android arm64 (`0.2.3-alpha.2-termux.1`). It bundles all dependencies and native modules for offline installation. This is the first alpha built and verified on a device: compiled, installed, booted and loaded with plugins on Termux with Node 26.13.1.
 
 ```bash
 pkg install -y nodejs-lts python ripgrep
-npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.1-rc.4-termux.1/dsh-termux-0.2.1-rc.4-termux.1.tgz
-dsh --version   # 0.2.1-rc.4
+npm i -g https://github.com/shioochicqwq/dsh-termux/releases/download/v0.2.3-alpha.2-termux.1/dsh-termux-0.2.3-alpha.2-termux.1.tgz
+dsh --version   # 0.2.3-alpha.2
 dsh web         # Web UI on 127.0.0.1:3080; open the printed ?token= URL once
 ```
 
-There is no container sandbox on Android; use manual approval for commands. See [PATCHES.md](PATCHES.md) for the Android changes. MIT licensed.
+Node.js `^24.22.3 || >=26.13.1` with a working `node:sqlite` is required. There is no container sandbox on Android; use manual approval for commands. Plugins pinned to `0.2.1-rc.4` are rejected by this runtime — update them (for DSH Remote: `dsh-mobile-remote` 3.17.2-alpha.1 or later). See [PATCHES.md](PATCHES.md) for the Android changes. MIT licensed.
